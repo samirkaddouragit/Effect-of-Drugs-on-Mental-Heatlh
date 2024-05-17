@@ -1,0 +1,167 @@
+---
+title: "Econ Final Project"
+author: "Samir Kaddoura"
+date: "2024-03-04"
+output: html_document
+---
+
+Importing dataset and libraries
+```{r}
+data<-read.csv("/Users/samir/Desktop/Econ empirical analysis/Final Project datasets/Team 62 Final Project/cleaneddata.csv")
+library(dplyr)
+library(lmtest)
+library(sandwich)
+library(MatchIt)
+library(marginaleffects)
+library(AER)
+library(grf)
+library(caTools)
+```
+
+Cleaning data/Creating new variables
+```{r}
+data$everalc<-ifelse(data$alcever==1,1,0)
+df_selected <- select(data, eduhighcat, irsex, income, CATAG6,COUTYP4, health2, cigever, cigtry, alcever,alctry,cbdhmpevr, mjage,
+                      KSSLR6MON, alcnumdkpm, cigavgm, mrjmdays,drugscore1, drugscore2,MOVSINPYR2,iralcfm,ircigfm,irmjfm,race,anydrug,alldrug,alcever,iralcyfu,ircigyfu,irmjyfu)
+df_selected$YearsAlcUse<-ifelse(df_selected$iralcyfu==9999,0,2023-df_selected$iralcyfu) #Number of years of alcohol use
+df_selected$YearsCigUse<-ifelse(df_selected$ircigyfu==9999,0,2023-df_selected$ircigyfu) #Number of years of cigarette use
+df_selected$YearsMJUse<-ifelse(df_selected$irmjyfu==9999,0,2023-df_selected$irmjyfu) #Number of years of Marijuana use
+df_selected$finalscore<-df_selected$drugscore1*100 #Drug score scale, 0 to 100
+df_selected$sex<-ifelse(df_selected$irsex==1,0,1) #Recoded sex, 0 for Male, 1 for Female
+```
+
+Regression Adjustments
+```{r}
+#Alcohol model
+alcmodel<-lm(log(1+KSSLR6MON)~iralcfm+income*CATAG6*eduhighcat+sex+health2+race,data=df_selected)
+summary(alcmodel)
+
+#Cigarettes model
+cigmodel<-lm(log(1+KSSLR6MON)~ircigfm+income*CATAG6*eduhighcat+sex+health2+race,data=df_selected)
+summary(cigmodel)
+
+#Marijuana model
+mjmodel<-lm(log(1+KSSLR6MON)~irmjfm+income*CATAG6*eduhighcat+sex+health2+race,data=df_selected)
+summary(mjmodel)
+
+#Final drugscore model
+model.full1<-lm(log(1+KSSLR6MON)~finalscore+income*CATAG6*eduhighcat+sex+health2+race,data=df_selected)
+summary(model.full1)
+
+#Anydrug model
+model.full2<-lm(log(1+KSSLR6MON)~anydrug+income*CATAG6*eduhighcat+sex+health2+race,data=df_selected)
+summary(model.full2)
+df_selected$predtreated<-predict(model.full2,newdata=data.frame(anydrug=1,select(df_selected,!anydrug)))
+df_selected$predcontrol<-predict(model.full2,newdata=data.frame(anydrug=0,select(df_selected,!anydrug)))
+ATE.anydrug<-mean(df_selected$predtreated-df_selected$predcontrol)
+ATE.anydrug
+
+#Alldrug model
+model.full3<-lm(log(1+KSSLR6MON)~alldrug+income*CATAG6*eduhighcat+sex+health2+race,data=df_selected)
+summary(model.full3)
+df_selected$predtreated2<-predict(model.full3,newdata=data.frame(alldrug=1,select(df_selected,!alldrug)))
+df_selected$predcontrol2<-predict(model.full3,newdata=data.frame(alldrug=0,select(df_selected,!alldrug)))
+ATE.alldrug<-mean(df_selected$predtreated2-df_selected$predcontrol2)
+ATE.alldrug
+```
+Matching
+```{r}
+#Random sample of 10000
+sampledata<-sample_n(df_selected,10000)
+?matchit()
+#Created matched datasets using full matching, through mahalanobis distance, to compute ATE
+matcher.alldrug<-matchit(alldrug~income*CATAG6*eduhighcat+sex+health2,data=sampledata,method='full',distance='mahalanobis',estimand='ATE')
+matcher.anydrug<-matchit(anydrug~income*CATAG6*eduhighcat+sex+health2,data=sampledata,method='full',distance='mahalanobis',estimand='ATE')
+data.alldrug<-match.data(matcher.alldrug)
+data.anydrug<-match.data(matcher.anydrug)
+#Fitting matched regressions
+alldrug.matched.model<-lm(formula = log(1+KSSLR6MON)~alldrug+income*CATAG6*eduhighcat+sex+health2,data=data.alldrug,weights=weights)
+anydrug.matched.model<-lm(formula = log(1+KSSLR6MON)~anydrug+income*CATAG6*eduhighcat+sex+health2,data=data.anydrug,weights=weights)
+ATE.alldrug<-avg_comparisons(alldrug.matched.model,variables='alldrug',wts='weights',newdata = data.alldrug,vcov=~subclass)
+ATE.anydrug<-avg_comparisons(anydrug.matched.model,variables='anydrug',wts='weights',newdata = data.anydrug,vcov=~subclass)
+#alldrug and Anydrug ATE
+ATE.alldrug
+ATE.anydrug
+```
+
+Instrumental variable regressions
+```{r}
+#IV alcohol model, with number of years as a drinker as IV
+cov(df_selected$YearsAlcUse,df_selected$iralcfm) #Relevance justified
+cov(df_selected$YearsAlcUse,alcmodel$residuals) #Exclusion justified
+ivmodel1<-ivreg(log(1+KSSLR6MON)~iralcfm+income*CATAG6*eduhighcat+sex+health2+race|YearsAlcUse+income*CATAG6*eduhighcat+sex+health2+race,data=df_selected)
+summary(ivmodel1,diagnostics=TRUE) 
+
+#IV Cigarette model, with number of years as a smoker as IV
+cov(df_selected$YearsCigUse,df_selected$ircigfm) #Relevance justified
+cov(df_selected$YearsCigUse,cigmodel$residuals) #Exclusion justified
+ivmodel2<-ivreg(log(1+KSSLR6MON)~ircigfm+income*CATAG6*eduhighcat+sex+health2+race|YearsCigUse+income*CATAG6*eduhighcat+sex+health2+race,data=df_selected)
+summary(ivmodel2,diagnostics=TRUE)
+
+#IV marijuana model, with number of years as a marijuana consumer as IV
+cov(df_selected$YearsMJUse,df_selected$irmjfm) #Relevance justified
+cov(df_selected$YearsMJUse,mjmodel$residuals) #Exclusion justified
+ivmodel3<-ivreg(log(1+KSSLR6MON)~irmjfm+income*CATAG6*eduhighcat+sex+health2+race|YearsMJUse+income*CATAG6*eduhighcat+sex+health2+race,data=df_selected)
+summary(ivmodel3,diagnostics=TRUE)
+```
+
+
+Train/test split for causal forests
+```{r}
+set.seed(101)
+sample <- sample.int(n = nrow(df_selected), size = floor(.8*nrow(df_selected)), replace = F)
+train <- df_selected[sample, ]
+test  <- df_selected[-sample, ]
+#Addint interaction terms between years of Alcohol Use, cigarette use and marijuana use
+X_train=model.matrix(lm(data=train,formula=KSSLR6MON~income*CATAG6*eduhighcat+sex+health2+YearsAlcUse*YearsCigUse*YearsMJUse+race))
+X_test=model.matrix(lm(data=test,formula=KSSLR6MON~income*CATAG6*eduhighcat+sex+health2+YearsAlcUse*YearsCigUse*YearsMJUse+race))
+```
+
+Anydrug causal forest
+```{r}
+anydrug.causal.train<-causal_forest(X=X_train,
+              Y=as.numeric(train$KSSLR6MON),
+              W=as.numeric(train$anydrug),
+              W.hat=mean(as.numeric(train$anydrug)),
+              num.trees = 5000) #Training anydrug causal forest with 5000 trees
+
+
+importance.anydrug=variable_importance(anydrug.causal.train) #Extracting importance of each variable
+rownames(importance.anydrug)=colnames(X_train)
+important.vars1<-rownames(importance.anydrug)[importance.anydrug>median(importance.anydrug)] #Identifying the top 50% most important variables
+
+tau.hat=predict(anydrug.causal.train,X=data.frame(X_test))$predictions #Predicting individual treatment effect
+summary(tau.hat) #Showing fluctuations in CATE, as well as Average and Median CATE
+
+anydrug.causal.test<-causal_forest(X=X_test[,important.vars1],
+                                    Y=as.numeric(test$KSSLR6MON),
+                                    W=as.numeric(test$anydrug),
+                                    W.hat=mean(as.numeric(test$anydrug)),
+                                    num.trees = 5000) #Anydrug Causal forest on testing sample, using important variables only
+
+average_treatment_effect(anydrug.causal.test) #Obtaining ATE for Anydrug
+
+best_linear_projection(anydrug.causal.train,A=X_train[,important.vars1],vcov.type = 'HC3') #Identifying what variables cause the CATE to fluctuate
+```
+
+Alldrug causal forest
+```{r}
+alldrug.causal.train<-causal_forest(X=X_train,
+                                    Y=as.numeric(train$KSSLR6MON),
+                                    W=as.numeric(train$alldrug),
+                                    W.hat=mean(as.numeric(train$alldrug)),
+                                    num.trees = 5000) #Training alldrug causal forest with 5000 trees
+importance.alldrug=variable_importance(alldrug.causal.train)
+rownames(importance.alldrug)=colnames(X_train)
+important.vars2<-rownames(importance.alldrug)[importance.alldrug>median(importance.alldrug)]
+summary(tau.hat) #Showing fluctuations in CATE, as well as Average and Median CATE
+alldrug.causal.test<-causal_forest(X=X_test[,important.vars2],
+                                   Y=as.numeric(test$KSSLR6MON),
+                                   W=as.numeric(test$alldrug),
+                                   W.hat=mean(as.numeric(test$alldrug)),
+                                   num.trees = 5000) #Alldrug Causal forest on testing sample, using important variables only
+average_treatment_effect(alldrug.causal.test) #Obtaining ATE for Alldrug
+
+#Identifying what variables cause the CATE to fluctuate
+best_linear_projection(alldrug.causal.train,A=X_train[,important.vars2],vcov.type = 'HC3')
+```

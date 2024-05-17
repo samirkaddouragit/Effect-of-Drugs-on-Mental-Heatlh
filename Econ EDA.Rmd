@@ -1,0 +1,90 @@
+---
+title: "Econ EDA"
+author: "Samir Kaddoura"
+date: "2024-03-04"
+output: html_document
+---
+
+importing dataset
+```{r setup, include=FALSE}
+data<-read.csv("/Users/samir/Desktop/Econ empirical analysis/Final Project datasets/Team 62 Final Project/cleaneddata.csv")
+library(ggplot2)
+library(dplyr)
+```
+
+Cleaning data/Creating new variables
+```{r}
+data$everalc<-ifelse(data$alcever==1,1,0)
+df_selected <- select(data, eduhighcat, irsex, income, CATAG6,COUTYP4, health2, cigever, cigtry, alcever,alctry,cbdhmpevr, mjage,
+                      KSSLR6MON, alcnumdkpm, cigavgm, mrjmdays,drugscore1, drugscore2,MOVSINPYR2,iralcfm,ircigfm,irmjfm,race,anydrug,alldrug,alcever,iralcyfu,ircigyfu,irmjyfu)
+df_selected$YearsAlcUse<-ifelse(df_selected$iralcyfu==9999,0,2023-df_selected$iralcyfu) #Number of years of alcohol use
+df_selected$YearsCigUse<-ifelse(df_selected$ircigyfu==9999,0,2023-df_selected$ircigyfu) #Number of years of cigarette use
+df_selected$YearsMJUse<-ifelse(df_selected$irmjyfu==9999,0,2023-df_selected$irmjyfu) #Number of years of Marijuana use
+df_selected$finalscore<-df_selected$drugscore1*100 #Drug score scale, 0 to 100
+df_selected$sex<-ifelse(df_selected$irsex==1,0,1) #Recoded sex, 0 for Male, 1 for Female
+```
+
+```{r}
+df_selected$anydrug <- as.factor(df_selected$anydrug)
+par(mfrow=c(2, 3))
+ggplot(df_selected, aes(x = anydrug, y = KSSLR6MON,color = anydrug, fill= anydrug)) +
+  geom_boxplot() +
+  labs(x = "anydrug", y = "KSSLR6MON")+
+  scale_color_manual(values = c("0" = "blue", "1" = "darkred")) +
+  scale_fill_manual(values = c("0" = "skyblue", "1" = "red"))
+
+df_selected$alldrug <- as.factor(df_selected$alldrug)
+par(mfrow=c(2, 3))
+ggplot(df_selected, aes(x = alldrug, y = KSSLR6MON,color = alldrug, fill= alldrug)) +
+  geom_boxplot() +
+  labs(x = "alldrug", y = "KSSLR6MON")+
+  scale_color_manual(values = c("0" = "blue", "1" = "darkred")) +
+  scale_fill_manual(values = c("0" = "skyblue", "1" = "red"))
+
+df_selected$income <- as.factor(df_selected$income)
+par(mfrow=c(2, 2))
+ggplot(df_selected, aes(x = income, fill = KSSLR6MON)) +
+  geom_bar(position = "dodge") +
+  labs(x = "income", y = "KSSLR6MON") +
+  scale_fill_discrete(name = "KSSLR6MON")
+
+
+par(mfrow=c(2, 3))
+ggplot(df_selected, aes(x = income, y = KSSLR6MON,color = income, fill= income)) +
+  geom_boxplot() +
+  labs(x = "income", y = "KSSLR6MON")+
+  scale_color_manual(values = c("1" = "blue", "2" = "darkred", "3"="darkgreen","4"="orange")) +
+  scale_fill_manual(values = c("1" = "skyblue", "2" = "red","3"="green","4"="yellow"))
+
+ggplot(df_selected, aes(x = factor(CATAG6),fill = factor(CATAG6))) +
+  geom_bar() +
+  labs(title = "Counts in Each Age Category",
+       x = "Age Category",
+       y = "Count") +
+  scale_fill_manual(values = c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#a6cee3")) +  
+  theme_minimal()
+
+ggplot(df_selected, aes(x = factor(eduhighcat),fill = factor(eduhighcat))) +
+  geom_bar() +
+  labs(title = "Counts in Each Edu Category",
+       x = "Edu Category",
+       y = "Count") +
+  scale_fill_manual(values = c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#a6cee3")) +  
+  theme_minimal()
+
+ggplot(df_selected, aes(x = factor(health2),fill = factor(health2))) +
+  geom_bar() +
+  labs(title = "Counts in Each health Category",
+       x = "health Category",
+       y = "Count") +
+  scale_fill_manual(values = c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a")) +  
+  theme_minimal()
+
+ggplot(df_selected, aes(x = factor(race),fill = factor(race))) +
+  geom_bar() +
+  labs(title = "Counts in Each race Category",
+       x = "race Category",
+       y = "Count") +
+  scale_fill_manual(values = c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a", "#a6cee3","yellow")) +  
+  theme_minimal()
+```
